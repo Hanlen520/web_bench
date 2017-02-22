@@ -11,6 +11,10 @@ HOST = "127.0.0.1"
 PORT = 80
 URI = "/?test="
 HEAD = {}
+REQUESTS = 0
+COMPLETED_REQUESTS = 0
+THREAD_COUNT = 0
+PER_REQUESTS = 0
 TOTAL = 0
 SUCC = 0
 FAIL = 0
@@ -26,20 +30,28 @@ def parse_args():
     parser.add_argument('host', type=str, help="The target server name")
     parser.add_argument('-p', '--port', type=int, default=80, help="The target port")
     parser.add_argument('-c', '--concurrency', type=int, default=10, help="Number of multiple requests to make at a time")
-    parser.add_argument('-H', '--head', type=str, help="Set request head")
+    parser.add_argument('-n', '--requests', type=int, default=10, help="Number of request to perform")
+    parser.add_argument('-H', '--head', type=str, help="Set request headers and use '||' to separate diff")
     args = parser.parse_args()
     return args
 
 def handle_head(head_str):
     head_dict = {}
-    if head_str and '\r\n' in head_str:
-        for hs in head_str.split('\r\n'):
-            head_dict[str(hs.split(':')[0])] = str(hs.split(':')[1])
-    elif head_str and '\n' in head_str:
-        for hs in head_str.split('\n'):
-            head_dict[str(hs.split(':')[0])] = str(hs.split(':')[1])
+    if head_str and '&&' in head_str:
+        for hs in head_str.split('&&'):
+            head_dict[str(hs.split(':')[0]).replace(' ', '')] = str(hs.split(':')[1])
+    elif head_str:
+        head_dict[str(head_str.split(':')[0]).replace(' ', '')] = str(head_str.split(':')[1])
     return head_dict
 
+def print_runinfo():
+    global THREAD_COUNT
+    global COMPLETED_REQUESTS
+    global REQUESTS
+    if COMPLETED_REQUESTS % PER_REQUESTS == 0:
+        print "Completed %s requests" % COMPLETED_REQUESTS
+    if COMPLETED_REQUESTS == REQUESTS:
+        print "Finished %s requests" % REQUESTS
 
 class RequestThread(threading.Thread):
     def __init__(self, thread_name):
@@ -57,30 +69,35 @@ class RequestThread(threading.Thread):
         global GT3
         global LT3
         global TOTALTIME
-        try:
-            st = time.time()
-            conn = httplib.HTTPConnection(HOST, PORT, False)
-            uri = URI + str(random.randint(0, 100000))
-            conn.request('GET', uri, headers=HEAD)
-            res = conn.getresponse()
-            time_span = time.time() - st
-            if res.status == 200:
+        global COMPLETED_REQUESTS
+        for i in range(PER_REQUESTS):
+            try:
+                st = time.time()
+                conn = httplib.HTTPConnection(HOST, PORT, False)
+                uri = URI + str(random.randint(0, 100000))
+                conn.request('GET', uri, headers=HEAD)
+                res = conn.getresponse()
+                time_span = time.time() - st
+                if res.status == 200:
+                    TOTAL += 1
+                    SUCC += 1
+                    TOTALTIME += time_span
+                else:
+                    TOTAL += 1
+                    FAIL += 1
+                self.maxtime(time_span)
+                self.mintime(time_span)
+                if time_span > 3:
+                    GT3 += 1
+                else:
+                    LT3 += 1
+            except Exception as e:
                 TOTAL += 1
-                SUCC += 1
-                TOTALTIME += time_span
-            else:
-                TOTAL += 1
-                FAIL += 1
-            self.maxtime(time_span)
-            self.mintime(time_span)
-            if time_span > 3:
-                GT3 += 1
-            else:
-                LT3 += 1
-        except Exception as e:
-            TOTAL += 1
-            EXCEPT += 1
-        conn.close()
+                EXCEPT += 1
+            conn.close()
+            COMPLETED_REQUESTS += 1
+            print_runinfo()
+            time.sleep(0.1)
 
     def maxtime(self, ts):
         global MAXTIME
@@ -96,29 +113,36 @@ class RequestThread(threading.Thread):
 if __name__=='__main__':
     args = parse_args()
     HOST = args.host
-    thread_count = args.concurrency
+    THREAD_COUNT = args.concurrency
     PORT = args.port
     HEAD = handle_head(args.head)
+    REQUESTS = args.requests if args.requests > THREAD_COUNT else THREAD_COUNT
+    PER_REQUESTS = REQUESTS/THREAD_COUNT
+    PRINT_REQUESTS = THREAD_COUNT / 10
     print "==============test start=============="
     print "server_name: ", HOST
     print "server_port: ", PORT
-    print "concurrency: ", thread_count
+    print "concurrency: ", THREAD_COUNT
     start_time = time.time()
-    for i in xrange(thread_count):
+    for i in xrange(THREAD_COUNT):
         t = RequestThread("thread" + str(i+1))
+        t.setDaemon(True)
         t.start()
 
     t = 0
-    while TOTAL < thread_count and t < 60:
-        t += 1
-        time.sleep(1)
+    try:
+        while TOTAL < REQUESTS and t < 60:
+            t += 1
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
     print "=============test end================="
-    print "thread_count:", thread_count
+    print "thread_count:", THREAD_COUNT
     print "total:%d, succ:%d, fail:%d, except:%d" % (TOTAL, SUCC, FAIL, EXCEPT)
     print 'response maxtime:', MAXTIME
     print 'response mintime:', MINTIME
-    print 'great than 3 seconds:%d, percent:%0.2f' % (GT3, float(GT3)/TOTAL)
-    print 'less than 3 seconds:%d, percent:%0.2f' % (LT3, float(LT3)/TOTAL)
+    print 'great than 3 seconds:%d, percent:%0.2f' % (GT3, float(GT3)/(TOTAL if TOTAL else 1))
+    print 'less than 3 seconds:%d, percent:%0.2f' % (LT3, float(LT3)/(TOTAL if TOTAL else 1))
     print 'average time: %0.2f' % (float(TOTALTIME)/(SUCC if SUCC else 1))
 
