@@ -10,6 +10,7 @@ import random
 HOST = "127.0.0.1"
 PORT = 80
 URI = "/?test="
+HEAD = {}
 TOTAL = 0
 SUCC = 0
 FAIL = 0
@@ -28,6 +29,17 @@ def parse_args():
     parser.add_argument('-H', '--head', type=str, help="Set request head")
     args = parser.parse_args()
     return args
+
+def handle_head(head_str):
+    head_dict = {}
+    if head_str and '\r\n' in head_str:
+        for hs in head_str.split('\r\n'):
+            head_dict[str(hs.split(':')[0])] = str(hs.split(':')[1])
+    elif head_str and '\n' in head_str:
+        for hs in head_str.split('\n'):
+            head_dict[str(hs.split(':')[0])] = str(hs.split(':')[1])
+    return head_dict
+
 
 class RequestThread(threading.Thread):
     def __init__(self, thread_name):
@@ -49,7 +61,7 @@ class RequestThread(threading.Thread):
             st = time.time()
             conn = httplib.HTTPConnection(HOST, PORT, False)
             uri = URI + str(random.randint(0, 100000))
-            conn.request('GET', uri)
+            conn.request('GET', uri, headers=HEAD)
             res = conn.getresponse()
             time_span = time.time() - st
             if res.status == 200:
@@ -86,7 +98,7 @@ if __name__=='__main__':
     HOST = args.host
     thread_count = args.concurrency
     PORT = args.port
-    HEAD = args.head
+    HEAD = handle_head(args.head)
     print "==============test start=============="
     print "server_name: ", HOST
     print "server_port: ", PORT
@@ -108,5 +120,5 @@ if __name__=='__main__':
     print 'response mintime:', MINTIME
     print 'great than 3 seconds:%d, percent:%0.2f' % (GT3, float(GT3)/TOTAL)
     print 'less than 3 seconds:%d, percent:%0.2f' % (LT3, float(LT3)/TOTAL)
-    print 'average time: %0.2f' % (float(TOTALTIME)/SUCC)
+    print 'average time: %0.2f' % (float(TOTALTIME)/(SUCC if SUCC else 1))
 
