@@ -15,6 +15,7 @@ REQUESTS = 0
 COMPLETED_REQUESTS = 0
 THREAD_COUNT = 0
 PER_REQUESTS = 0
+PRINT_REQUESTS = 0
 TOTAL = 0
 SUCC = 0
 FAIL = 0
@@ -48,7 +49,8 @@ def print_runinfo():
     global THREAD_COUNT
     global COMPLETED_REQUESTS
     global REQUESTS
-    if COMPLETED_REQUESTS % PER_REQUESTS == 0:
+    global PRINT_REQUESTS
+    if COMPLETED_REQUESTS % PRINT_REQUESTS == 0:
         print "Completed %s requests" % COMPLETED_REQUESTS
     if COMPLETED_REQUESTS == REQUESTS:
         print "Finished %s requests" % REQUESTS
@@ -118,7 +120,7 @@ if __name__=='__main__':
     HEAD = handle_head(args.head)
     REQUESTS = args.requests if args.requests > THREAD_COUNT else THREAD_COUNT
     PER_REQUESTS = REQUESTS/THREAD_COUNT
-    PRINT_REQUESTS = THREAD_COUNT / 10
+    PRINT_REQUESTS = REQUESTS / 10
     print "==============test start=============="
     print "server_name: ", HOST
     print "server_port: ", PORT
@@ -129,10 +131,8 @@ if __name__=='__main__':
         t.setDaemon(True)
         t.start()
 
-    t = 0
     try:
-        while TOTAL < REQUESTS and t < 60:
-            t += 1
+        while TOTAL < REQUESTS:
             time.sleep(1)
     except KeyboardInterrupt:
         pass
