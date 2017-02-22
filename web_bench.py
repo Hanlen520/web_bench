@@ -1,4 +1,5 @@
-# coding=utf8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import threading 
 import time
@@ -101,7 +102,6 @@ if __name__=='__main__':
         time.sleep(1)
 
     print "=============test end================="
-    print '\n'
     print "thread_count:", thread_count
     print "total:%d, succ:%d, fail:%d, except:%d" % (TOTAL, SUCC, FAIL, EXCEPT)
     print 'response maxtime:', MAXTIME
