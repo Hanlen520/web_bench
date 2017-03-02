@@ -25,6 +25,9 @@ MINTIME = 100
 GT3 = 0
 LT3 = 0
 TOTALTIME = 0
+EXCEPT_REASON = ''
+FAIL_REASON = ''
+mu = threading.Lock()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Web performace test")
@@ -35,6 +38,9 @@ def parse_args():
     parser.add_argument('-H', '--head', type=str, help="Set request headers and use '||' to separate diff")
     args = parser.parse_args()
     return args
+
+def handle_host(host_str):
+    return host_str.replace("http://", '').replace("https://", '').strip('/')
 
 def handle_head(head_str):
     head_dict = {}
@@ -50,7 +56,7 @@ def print_runinfo():
     global COMPLETED_REQUESTS
     global REQUESTS
     global PRINT_REQUESTS
-    if COMPLETED_REQUESTS % PRINT_REQUESTS == 0:
+    if COMPLETED_REQUESTS and COMPLETED_REQUESTS % PRINT_REQUESTS == 0:
         print "Completed %s requests" % COMPLETED_REQUESTS
     if COMPLETED_REQUESTS == REQUESTS:
         print "Finished %s requests" % REQUESTS
@@ -72,19 +78,23 @@ class RequestThread(threading.Thread):
         global LT3
         global TOTALTIME
         global COMPLETED_REQUESTS
+        global EXCEPT_REASON
+        global FAIL_REASON
         for i in range(PER_REQUESTS):
             try:
                 st = time.time()
-                conn = httplib.HTTPConnection(HOST, PORT, False)
+                conn = httplib.HTTPConnection(handle_host(HOST), PORT, False)
                 uri = URI + str(random.randint(0, 100000))
                 conn.request('GET', uri, headers=HEAD)
                 res = conn.getresponse()
                 time_span = time.time() - st
+                mu.acquire()
                 if res.status == 200:
                     TOTAL += 1
                     SUCC += 1
                     TOTALTIME += time_span
                 else:
+                    FAIL_REASON = res.status
                     TOTAL += 1
                     FAIL += 1
                 self.maxtime(time_span)
@@ -94,12 +104,15 @@ class RequestThread(threading.Thread):
                 else:
                     LT3 += 1
             except Exception as e:
+                mu.acquire()
+                EXCEPT_REASON = str(e)
                 TOTAL += 1
                 EXCEPT += 1
-            conn.close()
             COMPLETED_REQUESTS += 1
             print_runinfo()
-            time.sleep(0.1)
+            mu.release()
+            conn.close()
+            time.sleep(0.01)
 
     def maxtime(self, ts):
         global MAXTIME
@@ -140,6 +153,8 @@ if __name__=='__main__':
     print "=============test end================="
     print "thread_count:", THREAD_COUNT
     print "total:%d, succ:%d, fail:%d, except:%d" % (TOTAL, SUCC, FAIL, EXCEPT)
+    print "except reason: ",EXCEPT_REASON
+    print "fail code: " , FAIL_REASON
     print 'response maxtime:', MAXTIME
     print 'response mintime:', MINTIME
     print 'great than 3 seconds:%d, percent:%0.2f' % (GT3, float(GT3)/(TOTAL if TOTAL else 1))
