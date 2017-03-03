@@ -158,6 +158,8 @@ def create_processes():
     global EXCEPT_REASON
     global FAIL_CODE
     global COMPLETED_REQUESTS
+    global MAXTIME
+    global MINTIME
     thread_requests = REQUESTS / THREAD_COUNT
     pool = Pool(processes=cpu_count())
     per_cpu_threads = THREAD_COUNT / cpu_count()
@@ -186,6 +188,7 @@ def create_processes():
             MAXTIME = p.get()['maxtime']
         if MINTIME > p.get()['mintime']:
             MINTIME = p.get()['mintime']
+
 
 if __name__ == '__main__':
     args = parse_args()
