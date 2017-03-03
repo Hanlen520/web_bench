@@ -15,19 +15,18 @@ HEAD = {}
 REQUESTS = 0
 THREAD_COUNT = 0
 mu = Lock()
-Dict = Manager().dict()
-Dict['TOTAL'] = 0
-Dict['SUCC'] = 0
-Dict['FAIL'] = 0
-Dict['EXCEPT'] = 0
-Dict['GT3'] = 0
-Dict['LT3'] = 0
-Dict['COMPLETED_REQUESTS'] = 0
-Dict['MAXTIME'] = 0
-Dict['MINTIME'] = 100
-Dict['EXCEPT_REASON'] = ''
-Dict['FAIL_REASON'] = ''
-Dict['TOTALTIME'] = 0
+TOTAL = 0
+SUCC = 0
+FAIL = 0
+EXCEPT = 0
+GT3 = 0
+LT3 = 0
+COMPLETED_REQUESTS = 0
+MAXTIME = 0
+MINTIME = 100
+EXCEPT_REASON = ''
+FAIL_CODE = ''
+TOTALTIME = 0
 
 
 def parse_args():
@@ -60,13 +59,21 @@ class RequestThread(threading.Thread):
         threading.Thread.__init__(self, name=thread_name)
         self.thread_requests = thread_requests
         self.t_lock = t_lock
-        # self.p_lock = p_lock
 
     def run(self):
         self.test_performace()
 
     def test_performace(self):
-        global Dict
+        global TOTAL
+        global SUCC
+        global FAIL
+        global EXCEPT
+        global FAIL_CODE
+        global EXCEPT_REASON
+        global GT3
+        global LT3
+        global TOTALTIME
+        global COMPLETED_REQUESTS
         global URIS
         for _ in xrange(self.thread_requests):
             try:
@@ -76,53 +83,44 @@ class RequestThread(threading.Thread):
                 conn.request('GET', uri, headers=HEAD)
                 res = conn.getresponse()
                 time_span = time.time() - st
-                # self.p_lock.acquire()
                 # self.t_lock.acquire()
                 if res.status == 200:
-                    Dict['SUCC'] += 1
-                    Dict['TOTALTIME'] += time_span
+                    SUCC += 1
+                    TOTALTIME += time_span
                 else:
-                    if not Dict['FAIL_REASON']:
-                        Dict['FAIL_REASON'] = res.status
-                    Dict['FAIL'] += 1
+                    if not FAIL_CODE:
+                        FAIL_CODE = res.status
+                    FAIL += 1
                 self.maxtime(time_span)
                 self.mintime(time_span)
                 if time_span > 3:
-                    Dict['GT3'] += 1
+                    GT3 += 1
                 else:
-                    Dict['LT3'] += 1
+                    LT3 += 1
             except Exception as e:
-                if not Dict['EXCEPT_REASON']:
-                    Dict['EXCEPT_REASON'] = str(e)
-                Dict['EXCEPT'] += 1
+                if not EXCEPT_REASON:
+                    EXCEPT_REASON = str(e)
+                EXCEPT += 1
             # mu.acquire()
-            Dict['TOTAL'] += 1
-            Dict['COMPLETED_REQUESTS'] += 1
+            TOTAL += 1
+            COMPLETED_REQUESTS += 1
             # self.t_lock.release()
-            # self.p_lock.release()
-            # mu.release()
-            if (REQUESTS <= 1000 and not Dict['COMPLETED_REQUESTS'] % 100) \
-                    or (REQUESTS > 1000 and not Dict['COMPLETED_REQUESTS'] % 1000):
-                print "Completed %s requests" % Dict['COMPLETED_REQUESTS']
-            if Dict['COMPLETED_REQUESTS'] == REQUESTS:
-                print "Finished %s requests" % REQUESTS
             conn.close()
-            # print 'TOTAL: ', Dict['TOTAL']
             time.sleep(0.01)
 
     def maxtime(self, ts):
-        global Dict
-        if ts > Dict['MAXTIME']:
-            Dict['MAXTIME'] = ts
+        global MAXTIME
+        if ts > MAXTIME:
+            MAXTIME = ts
 
     def mintime(self, ts):
-        global Dict
-        if ts < Dict['MINTIME']:
-            Dict['MINTIME'] = ts
+        global MINTIME
+        if ts < MINTIME:
+            MINTIME = ts
 
 
 # 创建线程
-def create_threads(n, tr, p_lock):
+def create_threads(n, tr):
     ts = []
     t_lock = threading.Lock()
     for i in xrange(n):
@@ -131,21 +129,63 @@ def create_threads(n, tr, p_lock):
         ts.append(ts)
     for t in range(ts):
         ts.join()
+    data = {'total': TOTAL,
+            'succ': SUCC,
+            'fail': FAIL,
+            'except': EXCEPT,
+            'fail_code': FAIL_CODE,
+            'except_reason': EXCEPT_REASON,
+            'total_time': TOTALTIME,
+            'gt3': GT3,
+            'lt3': LT3,
+            'completed_requests': COMPLETED_REQUESTS,
+            'maxtime': MAXTIME,
+            'mintime': MINTIME}
+    return data
 
 
 # 创建同cpu核心数相同的进程数
 def create_processes():
     global THREAD_COUNT
     global REQUESTS
-    p_lock = Manager().Lock()
+    global TOTAL
+    global SUCC
+    global FAIL
+    global EXCEPT
+    global GT3
+    global LT3
+    global TOTALTIME
+    global EXCEPT_REASON
+    global FAIL_CODE
+    global COMPLETED_REQUESTS
     thread_requests = REQUESTS / THREAD_COUNT
     pool = Pool(processes=cpu_count())
     per_cpu_threads = THREAD_COUNT / cpu_count()
     _per_cpu_threads = per_cpu_threads + (THREAD_COUNT % cpu_count())
+    process_list = []
     for _ in range(cpu_count()-1):
-        pool.apply_async(create_threads, (per_cpu_threads, thread_requests, p_lock))
-    pool.apply_async(create_threads, (_per_cpu_threads, thread_requests, p_lock))
-
+        res = pool.apply_async(create_threads, (per_cpu_threads, thread_requests))
+        process_list.append(res)
+    res = pool.apply_async(create_threads, (_per_cpu_threads, thread_requests))
+    process_list.append(res)
+    pool.close()
+    pool.join()
+    # print process_list[0].get()
+    for p in process_list:
+        TOTAL += p.get()['total']
+        SUCC += p.get()['succ']
+        FAIL += p.get()['fail']
+        EXCEPT += p.get()['except']
+        GT3 += p.get()['gt3']
+        LT3 += p.get()['lt3']
+        TOTALTIME += p.get()['total_time']
+        EXCEPT_REASON = p.get()['except_reason']
+        FAIL_CODE = p.get()['fail_code']
+        COMPLETED_REQUESTS += p.get()['completed_requests']
+        if MAXTIME < p.get()['maxtime']:
+            MAXTIME = p.get()['maxtime']
+        if MINTIME > p.get()['mintime']:
+            MINTIME = p.get()['mintime']
 
 if __name__ == '__main__':
     args = parse_args()
@@ -162,19 +202,24 @@ if __name__ == '__main__':
     start_time = time.time()
     create_processes()
     try:
-        while Dict['TOTAL'] < REQUESTS:
+        while TOTAL < REQUESTS:
+            if (REQUESTS <= 1000 and not COMPLETED_REQUESTS % 100) \
+                    or (REQUESTS > 1000 and not COMPLETED_REQUESTS % 1000):
+                print "Completed %s requests" % COMPLETED_REQUESTS
+            if COMPLETED_REQUESTS == REQUESTS:
+                print "Finished %s requests" % REQUESTS
             time.sleep(1)
     except KeyboardInterrupt:
         pass
     end_time = time.time()
     print "=============test end================="
     print "thread_count:", THREAD_COUNT
-    print "total:%d, succ:%d, fail:%d, except:%d" % (Dict['TOTAL'], Dict['SUCC'], Dict['FAIL'], Dict['EXCEPT'])
-    print "except reason: ", Dict['EXCEPT_REASON']
-    print "fail code: ", Dict['FAIL_REASON']
-    print 'response maxtime:', Dict['MAXTIME']
-    print 'response mintime:', Dict['MINTIME']
-    print 'great than 3 seconds:%d, percent:%0.2f' % (Dict['GT3'], float(Dict['GT3'])/(Dict['TOTAL'] if Dict['TOTAL'] else 1))
-    print 'less than 3 seconds:%d, percent:%0.2f' % (Dict['LT3'], float(Dict['LT3'])/(Dict['TOTAL'] if Dict['TOTAL'] else 1))
-    print 'average time: %0.2f' % (float(Dict['TOTALTIME'])/(Dict['SUCC'] if Dict['SUCC'] else 1))
+    print "total:%d, succ:%d, fail:%d, except:%d" % (TOTAL, SUCC, FAIL, EXCEPT)
+    print "except reason: ", EXCEPT_REASON
+    print "fail code: ", FAIL_CODE
+    print 'response maxtime:', MAXTIME
+    print 'response mintime:', MINTIME
+    print 'great than 3 seconds:%d, percent:%0.2f' % (GT3, (float(GT3)/(TOTAL if TOTAL else 1)))
+    print 'less than 3 seconds:%d, percent:%0.2f' % (LT3, (float(LT3)/(TOTAL if TOTAL else 1)))
+    print 'average time: %0.2f' % (float(TOTALTIME)/(SUCC if SUCC else 1))
     print "real time: %0.2f" % (end_time - start_time)
