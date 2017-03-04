@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import threading 
+import threading
 from multiprocessing import cpu_count,  Pool, Lock, Manager
 import time
 import httplib
@@ -126,9 +126,9 @@ def create_threads(n, tr):
     for i in xrange(n):
         t = RequestThread(tr, ("thread" + str(i+1)), t_lock)
         t.start()
-        ts.append(ts)
-    for t in range(ts):
-        ts.join()
+        ts.append(t)
+    for t in ts:
+        t.join()
     data = {'total': TOTAL,
             'succ': SUCC,
             'fail': FAIL,
@@ -172,7 +172,6 @@ def create_processes():
     process_list.append(res)
     pool.close()
     pool.join()
-    # print process_list[0].get()
     for p in process_list:
         TOTAL += p.get()['total']
         SUCC += p.get()['succ']
@@ -206,11 +205,6 @@ if __name__ == '__main__':
     create_processes()
     try:
         while TOTAL < REQUESTS:
-            if (REQUESTS <= 1000 and not COMPLETED_REQUESTS % 100) \
-                    or (REQUESTS > 1000 and not COMPLETED_REQUESTS % 1000):
-                print "Completed %s requests" % COMPLETED_REQUESTS
-            if COMPLETED_REQUESTS == REQUESTS:
-                print "Finished %s requests" % REQUESTS
             time.sleep(1)
     except KeyboardInterrupt:
         pass
