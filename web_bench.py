@@ -7,6 +7,7 @@ import time
 import httplib
 import argparse
 import random
+import os
 
 HOST = "127.0.0.1"
 PORT = 80
@@ -125,10 +126,18 @@ def create_threads(n, tr):
     t_lock = threading.Lock()
     for i in xrange(n):
         t = RequestThread(tr, ("thread" + str(i+1)), t_lock)
+        t.setDaemon(True)
         t.start()
         ts.append(t)
-    for t in ts:
-        t.join()
+    try:
+        while True:
+            flag = False
+            for t in ts:
+                flag = t.isAlive() or flag
+            if not flag:
+                break
+    except KeyboardInterrupt:
+        pass
     data = {'total': TOTAL,
             'succ': SUCC,
             'fail': FAIL,
@@ -171,22 +180,25 @@ def create_processes():
     res = pool.apply_async(create_threads, (_per_cpu_threads, thread_requests))
     process_list.append(res)
     pool.close()
-    pool.join()
-    for p in process_list:
-        TOTAL += p.get()['total']
-        SUCC += p.get()['succ']
-        FAIL += p.get()['fail']
-        EXCEPT += p.get()['except']
-        GT3 += p.get()['gt3']
-        LT3 += p.get()['lt3']
-        TOTALTIME += p.get()['total_time']
-        EXCEPT_REASON = p.get()['except_reason']
-        FAIL_CODE = p.get()['fail_code']
-        COMPLETED_REQUESTS += p.get()['completed_requests']
-        if MAXTIME < p.get()['maxtime']:
-            MAXTIME = p.get()['maxtime']
-        if MINTIME > p.get()['mintime']:
-            MINTIME = p.get()['mintime']
+    try:
+        for p in process_list:
+            TOTAL += p.get()['total']
+            SUCC += p.get()['succ']
+            FAIL += p.get()['fail']
+            EXCEPT += p.get()['except']
+            GT3 += p.get()['gt3']
+            LT3 += p.get()['lt3']
+            TOTALTIME += p.get()['total_time']
+            EXCEPT_REASON = p.get()['except_reason']
+            FAIL_CODE = p.get()['fail_code']
+            COMPLETED_REQUESTS += p.get()['completed_requests']
+            if MAXTIME < p.get()['maxtime']:
+                MAXTIME = p.get()['maxtime']
+            if MINTIME > p.get()['mintime']:
+                MINTIME = p.get()['mintime']
+            print str(TOTAL) + '-=-=-=-=-=-=-=-='
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == '__main__':
@@ -203,11 +215,6 @@ if __name__ == '__main__':
     print "requests: ", REQUESTS
     start_time = time.time()
     create_processes()
-    try:
-        while TOTAL < REQUESTS:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
     end_time = time.time()
     print "=============test end================="
     print "thread_count:", THREAD_COUNT
